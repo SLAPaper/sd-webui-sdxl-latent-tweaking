@@ -235,6 +235,30 @@ class SdxlLatentTweaking(ms.Script):
 
         msc.on_cfg_denoised(denoise_callback)
 
+        if enable_clamping:
+            p.extra_generation_params["Latent Soft Clamping"] = True
+            p.extra_generation_params[
+                "Latent Soft Clamping Range"
+            ] = f"({clamping_start}, {clamping_end})"
+
+        if enable_centering:
+            p.extra_generation_params["Latent Centering"] = True
+            p.extra_generation_params["Latent Centering Channels"] = ",".join(
+                centering_channels
+            )
+            p.extra_generation_params[
+                "Latent Centering Range"
+            ] = f"({centering_start}, {centering_end})"
+
+        if enable_maximizing:
+            p.extra_generation_params["Latent Maximizing"] = True
+            p.extra_generation_params["Latent Maximizing Channels"] = ",".join(
+                maximizing_channels
+            )
+            p.extra_generation_params[
+                "Latent Maximizing Range"
+            ] = f"({maximizing_start}, {maximizing_end})"
+
 
 # Shrinking towards the mean (will also remove outliers)
 def soft_clamp_tensor(
