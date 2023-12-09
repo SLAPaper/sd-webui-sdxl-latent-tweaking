@@ -1,2 +1,3 @@
 # sd-webui-sdxl-latent-tweaking
-Playing with SDXL latent
+
+Implementing 3 tweaks introduced in [HF Blog](https://huggingface.co/blog/TimothyAlexisVass/explaining-the-sdxl-latent-space)
