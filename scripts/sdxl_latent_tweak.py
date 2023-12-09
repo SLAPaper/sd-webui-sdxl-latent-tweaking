@@ -28,7 +28,7 @@ class SdxlLatentTweaking(ms.Script):
 
     def title(self):
         """this function should return the title of the script. This is what will be displayed in the dropdown menu."""
-        return "SDXL Latent Fixing"
+        return "SDXL Latent Tweaking"
 
     def show(self, is_img2img: bool):
         """
@@ -172,7 +172,7 @@ class SdxlLatentTweaking(ms.Script):
                     return
 
                 print(
-                    f"SDXL Latent Fixing DEBUG: {stage}",
+                    f"SDXL Latent Tweaking DEBUG: {stage}",
                     f"({current_step}/{total_step})",
                     f"(size:{params.x.size()})",
                     f"(chmax:{torch.amax(params.x, (0, 2, 3))})",
