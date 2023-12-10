@@ -12,19 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import functools as ft
+import itertools as it
 import sys
+import typing as tg
 
 import gradio as gr
+import gradio.components.base as grcb
 import torch
 
 import modules.processing as mp
 import modules.script_callbacks as msc
 import modules.scripts as ms
 
+CURR_STATE: dict[str, tg.Any] = {}
+
 
 class SdxlLatentTweaking(ms.Script):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+
+        self.ui_components: dict[str, grcb.IOComponent] = {}
 
     def title(self):
         """this function should return the title of the script. This is what will be displayed in the dropdown menu."""
@@ -78,7 +86,7 @@ class SdxlLatentTweaking(ms.Script):
                     )
                     centering_channels = gr.CheckboxGroup(
                         label="Centering Channels",
-                        choices=[("Brightness", "0"), ("Color", "1,2"), ("Other", "3")],
+                        choices=["Brightness", "Color", "Pattern"],
                     )
                 centering_start = gr.Slider(
                     label="Centering Start",
@@ -101,7 +109,7 @@ class SdxlLatentTweaking(ms.Script):
                     )
                     maximizing_channels = gr.CheckboxGroup(
                         label="Maximizing Channels",
-                        choices=[("Brightness", "0"), ("Color", "1,2"), ("Other", "3")],
+                        choices=["Brightness", "Color", "Pattern"],
                     )
                 maximizing_start = gr.Slider(
                     label="Maximizing Start",
@@ -118,6 +126,85 @@ class SdxlLatentTweaking(ms.Script):
                     step=0.01,
                 )
             enable_debug_log = gr.Checkbox(label="Enable Debug Log", value=False)
+
+        self.ui_components["enable_clamping"] = enable_clamping
+        self.ui_components["clamping_factor"] = clamping_factor
+        self.ui_components["clamping_start"] = clamping_start
+        self.ui_components["clamping_end"] = clamping_end
+        self.ui_components["enable_centering"] = enable_centering
+        self.ui_components["centering_channels"] = centering_channels
+        self.ui_components["centering_start"] = centering_start
+        self.ui_components["centering_end"] = centering_end
+        self.ui_components["enable_maximizing"] = enable_maximizing
+        self.ui_components["maximizing_channels"] = maximizing_channels
+        self.ui_components["maximizing_start"] = maximizing_start
+        self.ui_components["maximizing_end"] = maximizing_end
+        self.ui_components["enable_debug_log"] = enable_debug_log
+
+        self.infotext_fields = [  # type: ignore
+            (enable_clamping, "Latent Soft Clamping"),
+            (clamping_factor, "Latent Soft Clamping Factor"),
+            (
+                clamping_start,
+                lambda d: d["Latent Soft Clamping Range"].split(";")[0]
+                if "Latent Soft Clamping Range" in d
+                and ";" in d["Latent Soft Clamping Range"]
+                else gr.update(),
+            ),
+            (
+                clamping_end,
+                lambda d: d["Latent Soft Clamping Range"].split(";")[1]
+                if "Latent Soft Clamping Range" in d
+                and ";" in d["Latent Soft Clamping Range"]
+                else gr.update(),
+            ),
+            (enable_centering, "Latent Centering"),
+            (
+                centering_channels,
+                lambda d: d["Latent Centering Channels"].split(";")
+                if "Latent Centering Channels" in d
+                and ";" in d["Latent Centering Channels"]
+                else gr.update(),
+            ),
+            (
+                centering_start,
+                lambda d: d["Latent Centering Range"].split(";")[0]
+                if "Latent Centering Range" in d and ";" in d["Latent Centering Range"]
+                else gr.update(),
+            ),
+            (
+                centering_end,
+                lambda d: d["Latent Centering Range"].split(";")[1]
+                if "Latent Centering Range" in d and ";" in d["Latent Centering Range"]
+                else gr.update(),
+            ),
+            (enable_maximizing, "Latent Maximizing"),
+            (
+                maximizing_channels,
+                lambda d: d["Latent Maximizing Channels"].split(";")
+                if "Latent Maximizing Channels" in d
+                and ";" in d["Latent Maximizing Channels"]
+                else gr.update(),
+            ),
+            (
+                maximizing_start,
+                lambda d: d["Latent Maximizing Range"].split(";")[0]
+                if "Latent Maximizing Range" in d
+                and ";" in d["Latent Maximizing Range"]
+                else gr.update(),
+            ),
+            (
+                maximizing_end,
+                lambda d: d["Latent Maximizing Range"].split(";")[1]
+                if "Latent Maximizing Range" in d
+                and ";" in d["Latent Maximizing Range"]
+                else gr.update(),
+            ),
+        ]
+
+        self.paste_field_names = [f for _, f in self.infotext_fields]  # type: ignore
+
+        msc.on_cfg_denoised(SdxlLatentTweaking.denoise_callback)
 
         return [
             enable_clamping,
@@ -142,8 +229,6 @@ class SdxlLatentTweaking(ms.Script):
         args contains all values returned by components from ui()
         """
 
-        msc.remove_current_script_callbacks()
-
         (
             enable_clamping,
             clamping_factor,
@@ -160,104 +245,137 @@ class SdxlLatentTweaking(ms.Script):
             enable_debug_log,
         ) = args
 
-        def denoise_callback(params: msc.CFGDenoisedParams):
-            """callback of denoise process"""
-
-            current_step = params.sampling_step
-            total_step = params.total_sampling_steps
-
-            def print_debug_log(stage: str) -> None:
-                """print debug log"""
-                if not enable_debug_log:
-                    return
-
-                print(
-                    f"SDXL Latent Tweaking DEBUG: {stage}",
-                    f"({current_step}/{total_step})",
-                    f"(size:{params.x.size()})",
-                    f"(chmax:{torch.amax(params.x, (0, 2, 3))})",
-                    f"(chmin:{torch.amin(params.x, (0, 2, 3))})",
-                    f"(mean:{torch.mean(params.x)})",
-                    "...",
-                    file=sys.stderr,
-                )
-
-            if (
-                enable_clamping
-                and current_step >= clamping_start * total_step
-                and current_step <= clamping_end * total_step
-            ):
-                upper = torch.abs(torch.max(params.x))
-                lower = torch.abs(torch.min(params.x))
-                print_debug_log("before soft clamping")
-                threshold = torch.max(upper, lower) * clamping_factor
-                params.x = soft_clamp_tensor(
-                    params.x,
-                    threshold=threshold * clamping_factor,
-                    boundary=threshold,
-                )
-                print_debug_log("after soft clamping")
-
-            if (
-                enable_centering
-                and current_step >= centering_start * total_step
-                and current_step <= centering_end * total_step
-            ):
-                print_debug_log("before centering")
-                channels = [int(x) for x in ",".join(centering_channels).split(",")]
-                params.x = center_tensor(
-                    params.x,
-                    0.8,
-                    0.8,
-                    channels=channels,
-                )
-                print_debug_log("after centering")
-
-            if (
-                enable_maximizing
-                and current_step >= maximizing_start * total_step
-                and current_step <= maximizing_end * total_step
-            ):
-                print_debug_log("before maximizing")
-                channels = [int(x) for x in ",".join(maximizing_channels).split(",")]
-                params.x = center_tensor(
-                    params.x,
-                    0.6,
-                    1.0,
-                    channels=channels,
-                )
-                print_debug_log("in maximizing")
-                params.x = maximize_tensor(
-                    params.x,
-                    channels=channels,
-                )
-                print_debug_log("after maximizing")
-
-        msc.on_cfg_denoised(denoise_callback)
+        CURR_STATE["enable_clamping"] = enable_clamping
+        CURR_STATE["clamping_factor"] = clamping_factor
+        CURR_STATE["clamping_start"] = clamping_start
+        CURR_STATE["clamping_end"] = clamping_end
+        CURR_STATE["enable_centering"] = enable_centering
+        CURR_STATE["centering_channels"] = centering_channels
+        CURR_STATE["centering_start"] = centering_start
+        CURR_STATE["centering_end"] = centering_end
+        CURR_STATE["enable_maximizing"] = enable_maximizing
+        CURR_STATE["maximizing_channels"] = maximizing_channels
+        CURR_STATE["maximizing_start"] = maximizing_start
+        CURR_STATE["maximizing_end"] = maximizing_end
+        CURR_STATE["enable_debug_log"] = enable_debug_log
 
         if enable_clamping:
             p.extra_generation_params["Latent Soft Clamping"] = True
+            p.extra_generation_params["Latent Soft Clamping Factor"] = clamping_factor
             p.extra_generation_params[
                 "Latent Soft Clamping Range"
-            ] = f"({clamping_start}, {clamping_end})"
+            ] = f"{clamping_start};{clamping_end}"
 
         if enable_centering:
             p.extra_generation_params["Latent Centering"] = True
-            p.extra_generation_params["Latent Centering Channels"] = ",".join(
+            p.extra_generation_params["Latent Centering Channels"] = ";".join(
                 centering_channels
             )
             p.extra_generation_params[
                 "Latent Centering Range"
-            ] = f"({centering_start}, {centering_end})"
+            ] = f"{centering_start};{centering_end}"
 
         if enable_maximizing:
             p.extra_generation_params["Latent Maximizing"] = True
-            p.extra_generation_params["Latent Maximizing Channels"] = ",".join(
+            p.extra_generation_params["Latent Maximizing Channels"] = ";".join(
                 maximizing_channels
             )
             p.extra_generation_params[
                 "Latent Maximizing Range"
-            ] = f"({maximizing_start}, {maximizing_end})"
+            ] = f"{maximizing_start};{maximizing_end}"
+
+    @staticmethod
+    def denoise_callback(params: msc.CFGDenoisedParams):
+        """callback of denoise process"""
+
+        current_step = params.sampling_step
+        total_step = params.total_sampling_steps
+
+        def print_debug_log(stage: str) -> None:
+            """print debug log"""
+            if not CURR_STATE["enable_debug_log"]:
+                return
+
+            print(
+                f"SDXL Latent Tweaking DEBUG: {stage}",
+                f"({current_step}/{total_step})",
+                f"(size:{params.x.size()})",
+                f"(chmax:{torch.amax(params.x, (0, 1, 2, 3))})",
+                f"(chmin:{torch.amin(params.x, (0, 1, 2, 3))})",
+                f"(mean:{torch.mean(params.x)})",
+                "...",
+                file=sys.stderr,
+            )
+
+        if (
+            CURR_STATE["enable_clamping"]
+            and current_step >= CURR_STATE["clamping_start"] * total_step
+            and current_step <= CURR_STATE["clamping_end"] * total_step
+        ):
+            upper = torch.abs(torch.max(params.x))
+            lower = torch.abs(torch.min(params.x))
+            print_debug_log("before soft clamping")
+            threshold = torch.max(upper, lower) * CURR_STATE["clamping_factor"]
+            params.x = soft_clamp_tensor(
+                params.x,
+                threshold=threshold * CURR_STATE["clamping_factor"],
+                boundary=threshold,
+            )
+            print_debug_log("after soft clamping")
+
+        if (
+            CURR_STATE["enable_centering"]
+            and current_step >= CURR_STATE["centering_start"] * total_step
+            and current_step <= CURR_STATE["centering_end"] * total_step
+        ):
+            print_debug_log("before centering")
+            params.x = center_tensor(
+                params.x,
+                0.8,
+                0.8,
+                channels=channel_name_to_channel_index(
+                    CURR_STATE["centering_channels"]
+                ),
+            )
+            print_debug_log("after centering")
+
+        if (
+            CURR_STATE["enable_maximizing"]
+            and current_step >= CURR_STATE["maximizing_start"] * total_step
+            and current_step <= CURR_STATE["maximizing_end"] * total_step
+        ):
+            print_debug_log("before maximizing")
+            channels = channel_name_to_channel_index(CURR_STATE["maximizing_channels"])
+            params.x = center_tensor(
+                params.x,
+                0.6,
+                1.0,
+                channels=channels,
+            )
+            print_debug_log("in maximizing")
+            params.x = maximize_tensor(
+                params.x,
+                channels=channels,
+            )
+            print_debug_log("after maximizing")
+
+
+CHANNEL_NAME_TO_INDEX: dict[str, list[int]] = {
+    "Brightness": [0],
+    "Color": [1, 2],
+    "Pattern": [3],
+}
+
+
+def channel_name_to_channel_index(name_list: list[str]) -> list[int]:
+    """convert channel name to index"""
+    return list(
+        it.chain.from_iterable(
+            CHANNEL_NAME_TO_INDEX[name]
+            for name in name_list
+            if name in CHANNEL_NAME_TO_INDEX
+        )
+    )
 
 
 # Shrinking towards the mean (will also remove outliers)
