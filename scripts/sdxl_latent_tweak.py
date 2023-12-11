@@ -25,14 +25,12 @@ import modules.processing as mp
 import modules.script_callbacks as msc
 import modules.scripts as ms
 
-CURR_STATE: dict[str, tg.Any] = {}
+_G_CURR_STATE: dict[str, tg.Any] = {}
 
 
 class SdxlLatentTweaking(ms.Script):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-
-        self.ui_components: dict[str, grcb.IOComponent] = {}
 
     def title(self):
         """this function should return the title of the script. This is what will be displayed in the dropdown menu."""
@@ -126,20 +124,6 @@ class SdxlLatentTweaking(ms.Script):
                     step=0.01,
                 )
             enable_debug_log = gr.Checkbox(label="Enable Debug Log", value=False)
-
-        self.ui_components["enable_clamping"] = enable_clamping
-        self.ui_components["clamping_factor"] = clamping_factor
-        self.ui_components["clamping_start"] = clamping_start
-        self.ui_components["clamping_end"] = clamping_end
-        self.ui_components["enable_centering"] = enable_centering
-        self.ui_components["centering_channels"] = centering_channels
-        self.ui_components["centering_start"] = centering_start
-        self.ui_components["centering_end"] = centering_end
-        self.ui_components["enable_maximizing"] = enable_maximizing
-        self.ui_components["maximizing_channels"] = maximizing_channels
-        self.ui_components["maximizing_start"] = maximizing_start
-        self.ui_components["maximizing_end"] = maximizing_end
-        self.ui_components["enable_debug_log"] = enable_debug_log
 
         self.infotext_fields = [  # type: ignore
             (enable_clamping, "Latent Soft Clamping"),
@@ -245,19 +229,19 @@ class SdxlLatentTweaking(ms.Script):
             enable_debug_log,
         ) = args
 
-        CURR_STATE["enable_clamping"] = enable_clamping
-        CURR_STATE["clamping_factor"] = clamping_factor
-        CURR_STATE["clamping_start"] = clamping_start
-        CURR_STATE["clamping_end"] = clamping_end
-        CURR_STATE["enable_centering"] = enable_centering
-        CURR_STATE["centering_channels"] = centering_channels
-        CURR_STATE["centering_start"] = centering_start
-        CURR_STATE["centering_end"] = centering_end
-        CURR_STATE["enable_maximizing"] = enable_maximizing
-        CURR_STATE["maximizing_channels"] = maximizing_channels
-        CURR_STATE["maximizing_start"] = maximizing_start
-        CURR_STATE["maximizing_end"] = maximizing_end
-        CURR_STATE["enable_debug_log"] = enable_debug_log
+        _G_CURR_STATE["enable_clamping"] = enable_clamping
+        _G_CURR_STATE["clamping_factor"] = clamping_factor
+        _G_CURR_STATE["clamping_start"] = clamping_start
+        _G_CURR_STATE["clamping_end"] = clamping_end
+        _G_CURR_STATE["enable_centering"] = enable_centering
+        _G_CURR_STATE["centering_channels"] = centering_channels
+        _G_CURR_STATE["centering_start"] = centering_start
+        _G_CURR_STATE["centering_end"] = centering_end
+        _G_CURR_STATE["enable_maximizing"] = enable_maximizing
+        _G_CURR_STATE["maximizing_channels"] = maximizing_channels
+        _G_CURR_STATE["maximizing_start"] = maximizing_start
+        _G_CURR_STATE["maximizing_end"] = maximizing_end
+        _G_CURR_STATE["enable_debug_log"] = enable_debug_log
 
         if enable_clamping:
             p.extra_generation_params["Latent Soft Clamping"] = True
@@ -293,7 +277,7 @@ class SdxlLatentTweaking(ms.Script):
 
         def print_debug_log(stage: str) -> None:
             """print debug log"""
-            if not CURR_STATE["enable_debug_log"]:
+            if not _G_CURR_STATE["enable_debug_log"]:
                 return
 
             print(
@@ -308,25 +292,25 @@ class SdxlLatentTweaking(ms.Script):
             )
 
         if (
-            CURR_STATE["enable_clamping"]
-            and current_step >= CURR_STATE["clamping_start"] * total_step
-            and current_step <= CURR_STATE["clamping_end"] * total_step
+            _G_CURR_STATE["enable_clamping"]
+            and current_step >= _G_CURR_STATE["clamping_start"] * total_step
+            and current_step <= _G_CURR_STATE["clamping_end"] * total_step
         ):
             upper = torch.abs(torch.max(params.x))
             lower = torch.abs(torch.min(params.x))
             print_debug_log("before soft clamping")
-            threshold = torch.max(upper, lower) * CURR_STATE["clamping_factor"]
+            threshold = torch.max(upper, lower) * _G_CURR_STATE["clamping_factor"]
             params.x = soft_clamp_tensor(
                 params.x,
-                threshold=threshold * CURR_STATE["clamping_factor"],
+                threshold=threshold * _G_CURR_STATE["clamping_factor"],
                 boundary=threshold,
             )
             print_debug_log("after soft clamping")
 
         if (
-            CURR_STATE["enable_centering"]
-            and current_step >= CURR_STATE["centering_start"] * total_step
-            and current_step <= CURR_STATE["centering_end"] * total_step
+            _G_CURR_STATE["enable_centering"]
+            and current_step >= _G_CURR_STATE["centering_start"] * total_step
+            and current_step <= _G_CURR_STATE["centering_end"] * total_step
         ):
             print_debug_log("before centering")
             params.x = center_tensor(
@@ -334,18 +318,18 @@ class SdxlLatentTweaking(ms.Script):
                 0.8,
                 0.8,
                 channels=channel_name_to_channel_index(
-                    CURR_STATE["centering_channels"]
+                    _G_CURR_STATE["centering_channels"]
                 ),
             )
             print_debug_log("after centering")
 
         if (
-            CURR_STATE["enable_maximizing"]
-            and current_step >= CURR_STATE["maximizing_start"] * total_step
-            and current_step <= CURR_STATE["maximizing_end"] * total_step
+            _G_CURR_STATE["enable_maximizing"]
+            and current_step >= _G_CURR_STATE["maximizing_start"] * total_step
+            and current_step <= _G_CURR_STATE["maximizing_end"] * total_step
         ):
             print_debug_log("before maximizing")
-            channels = channel_name_to_channel_index(CURR_STATE["maximizing_channels"])
+            channels = channel_name_to_channel_index(_G_CURR_STATE["maximizing_channels"])
             params.x = center_tensor(
                 params.x,
                 0.6,
