@@ -329,7 +329,16 @@ class SdxlLatentTweaking(ms.Script):
             and current_step <= _G_CURR_STATE["maximizing_end"] * total_step
         ):
             print_debug_log("before maximizing")
-            channels = channel_name_to_channel_index(_G_CURR_STATE["maximizing_channels"])
+            # use v2 maximizing for brightness channel
+            selected_channel_names: list[str] = _G_CURR_STATE["maximizing_channels"]
+            if "Brightness" in selected_channel_names:
+                selected_channel_names.remove("Brightness")
+                params.x = maximize_tensor_v2(
+                    params.x, channels=channel_name_to_channel_index(["Brightness"])
+                )
+                print_debug_log("after brightness v2 maximizing")
+
+            channels = channel_name_to_channel_index(selected_channel_names)
             params.x = center_tensor(
                 params.x,
                 0.6,
@@ -419,5 +428,47 @@ def maximize_tensor(
 
     normalization_factor = boundary / torch.max(torch.abs(min_val), torch.abs(max_val))
     input_tensor[:, channels] *= normalization_factor
+
+    return input_tensor
+
+
+# Maximize tensor (v2)
+def maximize_tensor_v2(
+    input_tensor: torch.Tensor,
+    boundary: float = 4.0,
+    channels=[0, 1, 2],
+):
+    """like the 'level' in PhotoShop, scale min/max value while keeping the mean
+
+    Input: (batch, channel, width, height)
+    """
+    for i in range(input_tensor.size(0)):
+        # Select the specific channel for this batch item
+        channel_data = input_tensor[i, channels, :, :]
+
+        # Check if data contains both positive and negative values
+        if torch.any(channel_data < 0) and torch.any(channel_data > 0):
+            # Calculate the mean
+            mean = channel_data.mean()
+
+            # Scale values differently based on their relation to the mean
+            channel_data = torch.where(
+                channel_data < mean,
+                -boundary * (channel_data / channel_data[channel_data < mean].min()),
+                channel_data,
+            )
+            channel_data = torch.where(
+                channel_data > mean,
+                boundary * (channel_data / channel_data[channel_data > mean].max()),
+                channel_data,
+            )
+        else:
+            # Rescale such that the absolute maximum value is boundary
+            max_abs_val = torch.max(torch.abs(channel_data))
+            if max_abs_val > 0:
+                channel_data = boundary * channel_data / max_abs_val
+
+        # Update the tensor
+        input_tensor[i, channels, :, :] = channel_data
 
     return input_tensor
