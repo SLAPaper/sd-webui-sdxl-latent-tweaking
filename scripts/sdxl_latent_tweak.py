@@ -12,13 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import functools as ft
 import itertools as it
 import sys
 import typing as tg
 
 import gradio as gr
-import gradio.components.base as grcb
 import torch
 
 import modules.processing as mp
@@ -46,6 +44,14 @@ class SdxlLatentTweaking(ms.Script):
          - script.AlwaysVisible if the script should be shown in UI at all times
         """
         return ms.AlwaysVisible
+
+    @staticmethod
+    def _parse_channels(infodict: dict[str, str], infokey: str) -> list[str]:
+        """parse channels from info dict"""
+        channels = infodict[infokey]
+        if ";" in channels:
+            return channels.split(";")
+        return [channels]
 
     def ui(self, is_img2img: bool):
         """this function should create gradio UI elements. See https://gradio.app/docs/#components
@@ -145,9 +151,8 @@ class SdxlLatentTweaking(ms.Script):
             (enable_centering, "Latent Centering"),
             (
                 centering_channels,
-                lambda d: d["Latent Centering Channels"].split(";")
+                lambda d: self._parse_channels(d, "Latent Centering Channels")
                 if "Latent Centering Channels" in d
-                and ";" in d["Latent Centering Channels"]
                 else gr.update(),
             ),
             (
@@ -165,9 +170,8 @@ class SdxlLatentTweaking(ms.Script):
             (enable_maximizing, "Latent Maximizing"),
             (
                 maximizing_channels,
-                lambda d: d["Latent Maximizing Channels"].split(";")
+                lambda d: self._parse_channels(d, "Latent Maximizing Channels")
                 if "Latent Maximizing Channels" in d
-                and ";" in d["Latent Maximizing Channels"]
                 else gr.update(),
             ),
             (
