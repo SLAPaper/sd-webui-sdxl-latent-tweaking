@@ -129,7 +129,9 @@ class SdxlLatentTweaking(ms.Script):
                     maximum=1.0,
                     step=0.01,
                 )
-            enable_debug_log = gr.Checkbox(label="Enable Debug Log", value=False)
+            with gr.Row():
+                enable_debug_log = gr.Checkbox(label="Enable Debug Log", value=False)
+                disable_when_hr = gr.Checkbox(label="Disable When HR Fix", value=False)
 
         self.infotext_fields = [  # type: ignore
             (enable_clamping, "Latent Soft Clamping"),
@@ -188,6 +190,7 @@ class SdxlLatentTweaking(ms.Script):
                 and ";" in d["Latent Maximizing Range"]
                 else gr.update(),
             ),
+            (disable_when_hr, "Latent Tweaking Disable HR"),
         ]
 
         self.paste_field_names = [f for _, f in self.infotext_fields]  # type: ignore
@@ -208,6 +211,7 @@ class SdxlLatentTweaking(ms.Script):
             maximizing_start,
             maximizing_end,
             enable_debug_log,
+            disable_when_hr,
         ]
 
     def process(self, p: mp.StableDiffusionProcessing, *args):
@@ -231,6 +235,7 @@ class SdxlLatentTweaking(ms.Script):
             maximizing_start,
             maximizing_end,
             enable_debug_log,
+            disable_when_hr,
         ) = args
 
         _G_CURR_STATE["enable_clamping"] = enable_clamping
@@ -246,6 +251,8 @@ class SdxlLatentTweaking(ms.Script):
         _G_CURR_STATE["maximizing_start"] = maximizing_start
         _G_CURR_STATE["maximizing_end"] = maximizing_end
         _G_CURR_STATE["enable_debug_log"] = enable_debug_log
+        _G_CURR_STATE["disable_when_hr"] = disable_when_hr
+        _G_CURR_STATE["in_hr"] = False
 
         if enable_clamping:
             p.extra_generation_params["Latent Soft Clamping"] = True
@@ -271,6 +278,15 @@ class SdxlLatentTweaking(ms.Script):
             p.extra_generation_params[
                 "Latent Maximizing Range"
             ] = f"{maximizing_start};{maximizing_end}"
+        
+        if disable_when_hr:
+            p.extra_generation_params["Latent Tweaking Disable HR"] = True
+
+    def before_hr(self, p: mp.StableDiffusionProcessing, *args):
+        """
+        This function is called before hires fix start.
+        """
+        _G_CURR_STATE["in_hr"] = True
 
     @staticmethod
     def denoise_callback(params: msc.CFGDenoisedParams):
@@ -294,6 +310,10 @@ class SdxlLatentTweaking(ms.Script):
                 "...",
                 file=sys.stderr,
             )
+
+        if _G_CURR_STATE["disable_when_hr"] and _G_CURR_STATE["in_hr"]:
+            print_debug_log("disable when hires")
+            return
 
         if (
             _G_CURR_STATE["enable_clamping"]

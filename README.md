@@ -17,3 +17,7 @@ In this extension, the following 3 tweaks are implemented:
 ## For SD1.5
 
 According to [sd-webui-diffusion-cg](https://github.com/Haoming02/sd-webui-diffusion-cg?tab=readme-ov-file#stable-diffusion-structures), SD1.5's 4 channels are: Negative Black, Negative Magenta, Cyan, Yellow, so if you want to tweak color, you have to select both `Color` and `Pattern` to get correct results.
+
+## New option for Hires Fix
+
+If you find hires fix shifting the color off, you may disable the tweakings when hires fix is activated by checking `Disable When HR Fix`.
