@@ -16,7 +16,7 @@ import itertools as it
 import sys
 import typing as tg
 
-import gradio as gr
+import gradio as gr  # type: ignore
 import torch
 
 import modules.processing as mp
