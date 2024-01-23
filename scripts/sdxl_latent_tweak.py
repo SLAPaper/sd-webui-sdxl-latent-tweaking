@@ -278,7 +278,7 @@ class SdxlLatentTweaking(ms.Script):
             p.extra_generation_params[
                 "Latent Maximizing Range"
             ] = f"{maximizing_start};{maximizing_end}"
-        
+
         if disable_when_hr:
             p.extra_generation_params["Latent Tweaking Disable HR"] = True
 
@@ -297,7 +297,7 @@ class SdxlLatentTweaking(ms.Script):
 
         def print_debug_log(stage: str) -> None:
             """print debug log"""
-            if not _G_CURR_STATE["enable_debug_log"]:
+            if not _G_CURR_STATE.get("enable_debug_log"):
                 return
 
             print(
@@ -310,6 +310,10 @@ class SdxlLatentTweaking(ms.Script):
                 "...",
                 file=sys.stderr,
             )
+
+        if not _G_CURR_STATE:
+            print_debug_log("no state")
+            return
 
         if _G_CURR_STATE["disable_when_hr"] and _G_CURR_STATE["in_hr"]:
             print_debug_log("disable when hires")
