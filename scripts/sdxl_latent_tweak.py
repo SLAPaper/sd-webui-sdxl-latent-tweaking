@@ -279,7 +279,16 @@ class SdxlLatentTweaking(ms.Script):
                 "Latent Maximizing Range"
             ] = f"{maximizing_start};{maximizing_end}"
 
-        if disable_when_hr:
+        if (
+            any(
+                (
+                    enable_clamping,
+                    enable_centering,
+                    enable_maximizing,
+                )
+            )
+            and disable_when_hr
+        ):
             p.extra_generation_params["Latent Tweaking Disable HR"] = True
 
     def before_hr(self, p: mp.StableDiffusionProcessing, *args):
